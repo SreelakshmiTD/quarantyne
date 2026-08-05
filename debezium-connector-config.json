@@ -1,0 +1,15 @@
+{
+  "name": "quarantyne-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "privacypulse",
+    "database.password": "privacypulse",
+    "database.dbname": "privacypulse_db",
+    "database.server.name": "quarantyne",
+    "topic.prefix": "quarantyne",
+    "plugin.name": "pgoutput",
+    "table.include.list": "public.customers"
+  }
+}
