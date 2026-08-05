@@ -9,6 +9,8 @@ Quarantyne is a real-time privacy enforcement gateway that sits between a databa
 
 ![Dashboard](screenshots/dashboard.png)
 
+![Records](screenshots/records.png)
+
 ![Violation Detail](screenshots/violation-detail.png)
 
 ---
