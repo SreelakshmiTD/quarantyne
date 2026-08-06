@@ -1,5 +1,6 @@
 import html
 import os
+from datetime import date, timedelta
 
 import altair as alt
 import psycopg2
@@ -52,7 +53,7 @@ def fetch_table_names(conn):
 PAGE_SIZE = 50
 
 
-def _violation_where(table_filter, field_search):
+def _violation_where(table_filter, field_search, date_from=None, date_to=None, operation=None):
     """Build shared WHERE clause and params for violation queries."""
     conditions, params = [], []
     if table_filter:
@@ -61,19 +62,28 @@ def _violation_where(table_filter, field_search):
     if field_search:
         conditions.append("unauthorized_fields ? %s")
         params.append(field_search.strip().lower())
+    if date_from:
+        conditions.append("event_timestamp >= %s")
+        params.append(date_from)
+    if date_to:
+        conditions.append("event_timestamp < %s")
+        params.append(date_to + timedelta(days=1))
+    if operation:
+        conditions.append("operation = %s")
+        params.append(operation)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return where, params
 
 
-def fetch_violation_count(conn, table_filter=None, field_search=None):
-    where, params = _violation_where(table_filter, field_search)
+def fetch_violation_count(conn, table_filter=None, field_search=None, date_from=None, date_to=None, operation=None):
+    where, params = _violation_where(table_filter, field_search, date_from, date_to, operation)
     with conn.cursor() as cur:
         cur.execute(f"SELECT COUNT(*) FROM violation_audit_log {where}", params if params else [])
         return cur.fetchone()[0]
 
 
-def fetch_violations(conn, table_filter=None, field_search=None, page=1):
-    where, params = _violation_where(table_filter, field_search)
+def fetch_violations(conn, table_filter=None, field_search=None, date_from=None, date_to=None, operation=None, page=1):
+    where, params = _violation_where(table_filter, field_search, date_from, date_to, operation)
     offset = (page - 1) * PAGE_SIZE
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
@@ -92,14 +102,16 @@ def fetch_violations(conn, table_filter=None, field_search=None, page=1):
         return cur.fetchall()
 
 
-def fetch_violations_over_time(conn):
+def fetch_violations_over_time(conn, table_filter=None, date_from=None, date_to=None, operation=None):
+    where, params = _violation_where(table_filter, None, date_from, date_to, operation)
     with conn.cursor() as cur:
-        cur.execute("""
-            SELECT date_trunc('day', event_timestamp) AS day, COUNT(*) AS violations
+        cur.execute(f"""
+            SELECT date_trunc('day', event_timestamp AT TIME ZONE 'UTC')::date AS day, COUNT(*) AS violations
             FROM violation_audit_log
+            {where}
             GROUP BY 1
             ORDER BY 1
-        """)
+        """, params if params else [])
         rows = cur.fetchall()
     if not rows:
         return pd.DataFrame()
@@ -108,15 +120,17 @@ def fetch_violations_over_time(conn):
     return df.set_index("day")
 
 
-def fetch_pii_breakdown(conn):
+def fetch_pii_breakdown(conn, table_filter=None, date_from=None, date_to=None, operation=None):
+    where, params = _violation_where(table_filter, None, date_from, date_to, operation)
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT field, COUNT(*) AS count
             FROM violation_audit_log,
                  jsonb_array_elements_text(unauthorized_fields) AS field
+            {where}
             GROUP BY field
             ORDER BY count DESC
-        """)
+        """, params if params else [])
         rows = cur.fetchall()
     if not rows:
         return pd.DataFrame()
@@ -382,15 +396,30 @@ with st.sidebar:
     st.markdown("**Filters**")
     selected_table = st.selectbox("Table", options=table_names)
     field_search = st.text_input("Field", placeholder="e.g. email", key="field_search_input")
+    selected_operation = st.selectbox(
+        "Operation",
+        options=["All operations", "INSERT", "UPDATE", "DELETE"],
+        key="operation_filter",
+    )
+
+    st.markdown("**Date Range**")
+    date_from = st.date_input("From", value=None, key="date_from_input")
+    date_to   = st.date_input("To",   value=None, key="date_to_input")
+    if st.button("Clear dates", use_container_width=True):
+        st.session_state["date_from_input"] = None
+        st.session_state["date_to_input"]   = None
+        st.rerun()
 
     # Reset page to 1 whenever filters change
-    if (selected_table != st.session_state.get("_prev_table")
-            or field_search != st.session_state.get("_prev_field")):
+    _filter_sig = (selected_table, field_search, selected_operation, date_from, date_to)
+    if _filter_sig != st.session_state.get("_prev_filter_sig"):
         st.session_state["page_input"] = 1
-    st.session_state["_prev_table"] = selected_table
-    st.session_state["_prev_field"] = field_search
+    st.session_state["_prev_filter_sig"] = _filter_sig
 
 table_filter = None if selected_table == "All tables" else selected_table
+op_filter    = None if selected_operation == "All operations" else selected_operation
+filter_date_from = date_from
+filter_date_to   = date_to
 page = st.session_state.get("page_input", 1)
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -436,52 +465,49 @@ st.caption(f"{summary['deletes']:,} delete event(s) excluded from counts")
 st.markdown("---")
 
 try:
-    df_time = fetch_violations_over_time(conn)
-    df_pii  = fetch_pii_breakdown(conn)
+    df_time = fetch_violations_over_time(conn, table_filter, filter_date_from, filter_date_to, op_filter)
+    df_pii  = fetch_pii_breakdown(conn, table_filter, filter_date_from, filter_date_to, op_filter)
 except Exception as e:
     st.warning(f"Could not load chart data: {e}")
     df_time = df_pii = pd.DataFrame()
 
-chart_l, chart_r = st.columns(2)
+st.markdown('<div class="q-section">Violations Over Time</div>', unsafe_allow_html=True)
+if not df_time.empty:
+    base = alt.Chart(df_time.reset_index()).encode(
+        x=alt.X("day:T", title=None, axis=alt.Axis(format="%b %d", tickCount="day")),
+        y=alt.Y("violations:Q", title=None, scale=alt.Scale(domainMin=0)),
+        tooltip=[
+            alt.Tooltip("day:T", title="Date", format="%b %d", timeUnit="yearmonthdate"),
+            alt.Tooltip("violations:Q", title="Violations"),
+        ],
+    )
+    chart = (
+        base.mark_area(color="#ef4444", opacity=0.15)
+        + base.mark_line(color="#ef4444", strokeWidth=2.5, point=alt.OverlayMarkDef(color="#ef4444", size=70, filled=True))
+    ).properties(height=220)
+    st.altair_chart(chart, use_container_width=True)
+else:
+    st.caption("No data yet.")
 
-with chart_l:
-    st.markdown('<div class="q-section">Violations Over Time</div>', unsafe_allow_html=True)
-    if not df_time.empty:
-        base = alt.Chart(df_time.reset_index()).encode(
-            x=alt.X("day:T", title=None, axis=alt.Axis(format="%b %d")),
-            y=alt.Y("violations:Q", title=None, scale=alt.Scale(domainMin=0)),
+st.markdown("---")
+st.markdown('<div class="q-section">PII Type Breakdown</div>', unsafe_allow_html=True)
+if not df_pii.empty:
+    chart = (
+        alt.Chart(df_pii.reset_index())
+        .mark_bar(color="#f59e0b", cornerRadiusTopRight=3, cornerRadiusBottomRight=3)
+        .encode(
+            y=alt.Y("field:N", sort="-x", title=None, axis=alt.Axis(labelLimit=200)),
+            x=alt.X("count:Q", title=None, scale=alt.Scale(domainMin=0)),
             tooltip=[
-                alt.Tooltip("day:T", title="Date", format="%b %d"),
-                alt.Tooltip("violations:Q", title="Violations"),
+                alt.Tooltip("field:N", title="Field"),
+                alt.Tooltip("count:Q", title="Violations"),
             ],
         )
-        chart = (
-            base.mark_area(color="#ef4444", opacity=0.12)
-            + base.mark_line(color="#ef4444", strokeWidth=2, point=alt.OverlayMarkDef(color="#ef4444", size=60, filled=True))
-        ).properties(height=280)
-        st.altair_chart(chart, use_container_width=True)
-    else:
-        st.caption("No data yet.")
-
-with chart_r:
-    st.markdown('<div class="q-section">PII Type Breakdown</div>', unsafe_allow_html=True)
-    if not df_pii.empty:
-        chart = (
-            alt.Chart(df_pii.reset_index())
-            .mark_bar(color="#f59e0b", cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
-            .encode(
-                x=alt.X("field:N", sort="-y", title=None, axis=alt.Axis(labelAngle=-30)),
-                y=alt.Y("count:Q", title=None),
-                tooltip=[
-                    alt.Tooltip("field:N", title="Field"),
-                    alt.Tooltip("count:Q", title="Violations"),
-                ],
-            )
-            .properties(height=320)
-        )
-        st.altair_chart(chart, use_container_width=True)
-    else:
-        st.caption("No data yet.")
+        .properties(height=max(220, len(df_pii) * 36))
+    )
+    st.altair_chart(chart, use_container_width=True)
+else:
+    st.caption("No data yet.")
 
 # ── Policy Violations ─────────────────────────────────────────────────────────
 
@@ -490,10 +516,10 @@ st.markdown('<div class="q-section">Policy Violations</div>', unsafe_allow_html=
 st.markdown("<div style='margin-bottom:0.4rem'></div>", unsafe_allow_html=True)
 
 try:
-    total_violations = fetch_violation_count(conn, table_filter, field_search or None)
+    total_violations = fetch_violation_count(conn, table_filter, field_search or None, filter_date_from, filter_date_to, op_filter)
     total_pages = max(1, -(-total_violations // PAGE_SIZE))  # ceiling division
     current_page = min(int(page), total_pages)
-    violations = fetch_violations(conn, table_filter, field_search or None, page=current_page)
+    violations = fetch_violations(conn, table_filter, field_search or None, filter_date_from, filter_date_to, op_filter, page=current_page)
 except Exception as e:
     st.error(f"Failed to load violations: {e}")
     st.stop()
