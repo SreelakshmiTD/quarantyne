@@ -1,6 +1,5 @@
 import html
 import os
-from datetime import datetime, timezone
 
 import altair as alt
 import psycopg2
@@ -47,7 +46,7 @@ def fetch_table_names(conn):
         cur.execute(
             "SELECT DISTINCT table_name FROM violation_audit_log ORDER BY table_name"
         )
-        return ["(all)"] + [r[0] for r in cur.fetchall()]
+        return ["All tables"] + [r[0] for r in cur.fetchall()]
 
 
 PAGE_SIZE = 50
@@ -346,7 +345,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**Filters**")
     selected_table = st.selectbox("Table", options=table_names)
-    field_search = st.text_input("Unauthorized Field", placeholder="e.g. email", key="field_search_input")
+    field_search = st.text_input("Field", placeholder="e.g. email", key="field_search_input")
 
     # Reset page to 1 whenever filters change
     if (selected_table != st.session_state.get("_prev_table")
@@ -355,7 +354,7 @@ with st.sidebar:
     st.session_state["_prev_table"] = selected_table
     st.session_state["_prev_field"] = field_search
 
-table_filter = None if selected_table == "(all)" else selected_table
+table_filter = None if selected_table == "All tables" else selected_table
 page = st.session_state.get("page_input", 1)
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -425,7 +424,7 @@ with chart_l:
             base.mark_area(color="#ef4444", opacity=0.12)
             + base.mark_line(color="#ef4444", strokeWidth=2)
             + base.mark_point(color="#ef4444", size=40, filled=True)
-        ).interactive()
+        ).properties(height=280).interactive()
         st.altair_chart(chart, use_container_width=True)
     else:
         st.caption("No data yet.")
@@ -444,6 +443,7 @@ with chart_r:
                     alt.Tooltip("count:Q", title="Violations"),
                 ],
             )
+            .properties(height=280)
         )
         st.altair_chart(chart, use_container_width=True)
     else:
@@ -504,7 +504,7 @@ selected = st.dataframe(
     },
 )
 
-selected_rows = selected.selection.rows if selected and selected.selection else []
+selected_rows = selected.selection.rows if selected.selection else []
 
 if selected_rows:
     row = violations[selected_rows[0]]
