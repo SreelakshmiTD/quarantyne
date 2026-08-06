@@ -470,7 +470,17 @@ with c3:
     metric_card("Violations", f"{summary['violations']:,}", "red")
 with c4:
     metric_card("Violation Rate", f"{summary['rate']:.1f}%", "amber")
-st.caption(f"{summary['deletes']:,} delete event(s) excluded from counts")
+active_filters = []
+if table_filter:
+    active_filters.append(f"table: `{table_filter}`")
+if filter_date_from:
+    active_filters.append(f"from: {filter_date_from}")
+if filter_date_to:
+    active_filters.append(f"to: {filter_date_to}")
+if active_filters:
+    st.caption(f"{summary['deletes']:,} delete event(s) excluded from counts · Filtered by {' · '.join(active_filters)}")
+else:
+    st.caption(f"{summary['deletes']:,} delete event(s) excluded from counts · Showing all tables")
 
 # ── Charts ────────────────────────────────────────────────────────────────────
 
