@@ -1,6 +1,7 @@
 import html
 import os
 
+import altair as alt
 import psycopg2
 import psycopg2.extras
 import pandas as pd
@@ -393,7 +394,15 @@ chart_l, chart_r = st.columns(2)
 with chart_l:
     st.markdown('<div class="q-section">Violations Over Time</div>', unsafe_allow_html=True)
     if not df_time.empty:
-        st.line_chart(df_time, color="#ef4444", use_container_width=True)
+        chart = (
+            alt.Chart(df_time.reset_index())
+            .mark_line(color="#ef4444")
+            .encode(
+                x=alt.X("hour:T", title=None),
+                y=alt.Y("violations:Q", title="violations", scale=alt.Scale(domainMin=0)),
+            )
+        )
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.caption("No data yet.")
 
