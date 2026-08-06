@@ -1,5 +1,6 @@
 import html
 import os
+from datetime import datetime, timezone
 
 import altair as alt
 import psycopg2
@@ -122,6 +123,13 @@ def fetch_pii_breakdown(conn):
         return pd.DataFrame()
     df = pd.DataFrame(rows, columns=["field", "count"])
     return df.set_index("field")
+
+
+def fetch_last_updated(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT MAX(event_timestamp) FROM processing_log")
+        row = cur.fetchone()
+    return row[0] if row and row[0] else None
 
 
 # ── PII masking ──────────────────────────────────────────────────────────────
@@ -326,13 +334,13 @@ except Exception as e:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("## QUARANTYNE")
+    st.markdown("## Quarantyne")
     st.markdown(
         '<p style="color:#9ca3af;font-size:0.78rem;margin-top:-10px;margin-bottom:1rem;">'
         "Privacy Enforcement Dashboard</p>",
         unsafe_allow_html=True,
     )
-    if st.button("Refresh", type="primary", use_container_width=True):
+    if st.button("Refresh", type="secondary", use_container_width=True):
         st.rerun()
 
     st.markdown("---")
@@ -347,19 +355,24 @@ with st.sidebar:
     st.session_state["_prev_table"] = selected_table
     st.session_state["_prev_field"] = field_search
 
-    st.markdown("**Page**")
-    page = st.number_input("Page", min_value=1, value=1, step=1, label_visibility="collapsed", key="page_input")
-
 table_filter = None if selected_table == "(all)" else selected_table
+page = st.session_state.get("page_input", 1)
 
 # ── Header ────────────────────────────────────────────────────────────────────
 
-st.markdown("# QUARANTYNE")
+st.markdown("# Quarantyne")
 st.markdown(
     '<p style="color:#9ca3af;margin-top:-14px;margin-bottom:4px;">'
     "Real-Time Privacy Enforcement for CDC Streams</p>",
     unsafe_allow_html=True,
 )
+
+try:
+    last_updated = fetch_last_updated(conn)
+except Exception:
+    last_updated = None
+ts_str = last_updated.strftime("%Y-%m-%d %H:%M:%S UTC") if last_updated else "—"
+st.caption(f"Last event: {ts_str}")
 
 # ── Processing Health ─────────────────────────────────────────────────────────
 
@@ -402,7 +415,7 @@ with chart_l:
     if not df_time.empty:
         base = alt.Chart(df_time.reset_index()).encode(
             x=alt.X("hour:T", title=None),
-            y=alt.Y("violations:Q", title="violations", scale=alt.Scale(domainMin=0)),
+            y=alt.Y("violations:Q", title=None, scale=alt.Scale(domainMin=0)),
             tooltip=[
                 alt.Tooltip("hour:T", title="Time", format="%b %d %H:%M"),
                 alt.Tooltip("violations:Q", title="Violations"),
@@ -422,10 +435,10 @@ with chart_r:
     if not df_pii.empty:
         chart = (
             alt.Chart(df_pii.reset_index())
-            .mark_bar(color="#f59e0b", cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+            .mark_bar(color="#f59e0b", cornerRadiusTopLeft=3, cornerRadiusTopRight=3, size=52)
             .encode(
                 x=alt.X("field:N", sort="-y", title=None, axis=alt.Axis(labelAngle=-45)),
-                y=alt.Y("count:Q", title="violations"),
+                y=alt.Y("count:Q", title=None),
                 tooltip=[
                     alt.Tooltip("field:N", title="Field"),
                     alt.Tooltip("count:Q", title="Violations"),
@@ -457,7 +470,11 @@ if not violations:
     st.info("No violations match the current filters.")
     st.stop()
 
-st.caption(f"Page {current_page} of {total_pages} · {total_violations:,} total violations · select a row then click View Details")
+cap_col, page_col = st.columns([5, 1])
+with cap_col:
+    st.caption(f"Page {current_page} of {total_pages} · {total_violations:,} total violations · select a row then click View Details")
+with page_col:
+    st.number_input("Page", min_value=1, value=int(page), step=1, key="page_input", label_visibility="collapsed")
 
 display_rows = [
     {
