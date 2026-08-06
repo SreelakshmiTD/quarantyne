@@ -42,7 +42,13 @@ OP_LABELS = {
 
 
 def run() -> None:
-    policy_config = load_policy_config(os.path.join(os.path.dirname(__file__), "policy.yaml"))
+    try:
+        policy_config = load_policy_config(os.path.join(os.path.dirname(__file__), "policy.yaml"))
+        if not isinstance(policy_config, dict) or "tables" not in policy_config:
+            raise ValueError("policy config must be a dict with a 'tables' key")
+    except Exception as e:
+        print(f"[FATAL] Could not load policy config: {e}")
+        return
     print("Policy loaded:")
     for table, cfg in policy_config.get("tables", {}).items():
         print(f"  {table}: allowed_pii_fields = {(cfg or {}).get('allowed_pii_fields', [])}")
