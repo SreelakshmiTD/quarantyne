@@ -37,16 +37,17 @@ Quarantyne catches that moment: a field going from absent (or empty) to populate
 ## Architecture
 
 ```
-PostgreSQL (customers table)
+PostgreSQL (customers, employees, orders, payments, ...)
         │
         ▼
-    Debezium (CDC via WAL)
+    Debezium (CDC via WAL — pgoutput plugin)
         │
         ▼
-Kafka — quarantyne.public.customers (raw/intake topic)
+Kafka — quarantyne.public.* (one topic per table, raw/intake)
         │
         ▼
   Consumer: PII Detector + Policy Engine
+  (policy.yaml hot-reloaded on change, no restart required)
         │
    ┌────┴────┐
    ▼         ▼
@@ -116,6 +117,8 @@ Tested against a 20-case hand-labeled set (not the live pipeline — a standalon
 
 **Proven via deliberate crash injection**, not just designed: the consumer was killed mid-processing (before the commit step) using a controlled test harness, and confirmed to correctly redeliver the interrupted message on restart, with zero data loss and no silent skips.
 
+**Policy hot-reload without restart.** The consumer watches `policy.yaml` for file-modification changes on every poll tick. When the file changes, the new policy is loaded and validated before replacing the in-memory config — if the reload fails, the previous policy stays active and a warning is logged. This means per-table allowlists can be updated in production with zero downtime and zero message loss.
+
 **Batching, added after profiling revealed a real bottleneck.** The original per-message `producer.flush()` + synchronous Postgres commit created a real cost: average latency 0.4ms, but spikes up to 20.7ms attributable to individual DB round-trips on every violation. Batching (flush every 100 messages, commit every 50 violations, with a 5-second idle-timeout fallback to avoid indefinite pending state during low traffic) reduced average latency to sub-millisecond with a max of 0.3ms.
 
 **The batching tradeoff, stated plainly:** batching trades offset-commit granularity for throughput — a crash mid-batch now means redelivering up to ~100 messages instead of 1, versus the unbatched version. This is safe under at-least-once semantics (reprocessing a compliant message or re-writing an audit row is harmless, not corrupting), but it's a real, deliberate tradeoff, not a free improvement.
@@ -159,6 +162,26 @@ Two runs, same architecture, before and after the batching fix:
 
 ---
 
+## Dashboard
+
+The Streamlit dashboard reads from Postgres (read-only) and provides real-time observability over the enforcement pipeline.
+
+**Processing Health** — four metric cards: Total Processed, Compliant, Violations, Violation Rate. Delete events are tracked separately and excluded from the rate calculation.
+
+**Violations Over Time** — daily aggregation chart showing the violation trend. Useful for spotting incident spikes (a sudden rise followed by resolution is visible as a bell curve in the demo data).
+
+**PII Type Breakdown** — horizontal bar chart ranked by violation frequency across all tables. Shows which PII types (SSN, phone, home address, etc.) are most commonly appearing in unauthorized positions.
+
+**Policy Violations table** — paginated (50 rows/page) with full filter support:
+- **Table** — filter by source table
+- **Field** — search by unauthorized field name (uses a Postgres GIN index on the JSONB `unauthorized_fields` column)
+- **Operation** — filter by INSERT / UPDATE / DELETE
+- **Date range** — filter violations by event timestamp; applied to both the table and the charts simultaneously
+
+**Violation detail modal** — click any row to open a full before/after diff with: unauthorized fields highlighted, detection reasons (field_name_match vs pattern_match), newly introduced fields flagged, and all PII values masked for safe display in the UI.
+
+---
+
 ## Known Limitations (documented, not hidden)
 
 - PII in unstructured/free-text fields with generic names will not be caught (91.67% recall gap, explained above)
@@ -168,6 +191,22 @@ Two runs, same architecture, before and after the batching fix:
 - Field-name heuristics are static (a hardcoded hint list) rather than adaptive to schema drift not anticipated in advance
 
 **What I'd add for a real production deployment:** NER-based secondary detection for free-text fields (accepting the latency/explainability cost as a conscious tradeoff), multi-partition + multi-consumer horizontal scaling, sustained-duration load testing, continuous schema-drift monitoring rather than a static field-name list, and a human-review queue for borderline/low-confidence cases instead of a binary allow/quarantine decision.
+
+---
+
+## v2 Roadmap
+
+Features deliberately scoped out of v1 but clearly defined for a next iteration:
+
+| Feature | Rationale |
+|---|---|
+| NER-based detection (e.g. Presidio) | Close the free-text recall gap; add as a secondary signal alongside the current deterministic detector |
+| Multi-partition + multi-consumer scaling | Partition the intake topics by table; run one consumer group instance per partition for horizontal throughput |
+| Schema Registry integration | Detect schema drift automatically — new fields added to a table surface as alerts before they appear in the stream |
+| Human review queue | Replace the binary COMPLIANT/VIOLATION decision with a third state (REVIEW) for low-confidence or borderline cases |
+| Alert / notification layer | Trigger PagerDuty / Slack when violation rate exceeds a threshold or a spike is detected in the trend chart |
+| AWS-native deployment | Replace Docker Compose with MSK (Kafka), RDS (Postgres), and ECS/EKS for the consumer; Debezium on ECS or MSK Connect |
+| REST API | Expose violation data and policy management via a typed API so external systems can query the audit log programmatically |
 
 ---
 
@@ -185,13 +224,17 @@ A production deployment would source credentials from environment variables or a
 # 1. Start infrastructure
 docker compose up -d
 
-# 2. Create the source table (via TablePlus or psql)
-#    See schema_customers.sql
+# 2. Create source tables and set replica identity (via psql or TablePlus)
+#    schema_customers.sql, schema_orders.sql
+#    Then: ALTER TABLE customers REPLICA IDENTITY FULL;
+#          ALTER TABLE orders REPLICA IDENTITY FULL;
 
-# 3. Set replica identity for full before/after capture
-ALTER TABLE customers REPLICA IDENTITY FULL;
+# 3. Create audit tables
+#    schema_audit.sql          — violation_audit_log
+#    schema_processing_log.sql — processing_log
+#    add_indexes.sql           — GIN + btree indexes for dashboard query performance
 
-# 4. Register the Debezium connector (via Kafka UI at localhost:8080, or REST)
+# 4. Register the Debezium connector (via Kafka UI at localhost:8080 or REST)
 #    See debezium-connector-config.json
 
 # 5. Set up the Python environment
@@ -199,17 +242,36 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 6. Run the consumer
+# 6. Copy and configure environment variables
+cp .env.example .env
+# Edit .env with your Postgres credentials
+
+# 7. Run the consumer (enforces policy in real time)
 python3 consumer.py
 
-# 7. Run the dashboard (separate terminal, same venv activated)
+# 8. Run the dashboard (separate terminal, same venv activated)
 streamlit run dashboard.py
+```
+
+**To seed realistic demo data** (2,100 events across 4 tables with a bell-curve violation spike):
+```bash
+python3 seed_demo.py
 ```
 
 ---
 
 ## Demo Scenario
 
-1. Insert a clean row into `customers` (no PII) → observe it processed as `COMPLIANT`, routed to `quarantyne.approved`
-2. Update that row to add an `email` or `phone` value → observe it processed as `VIOLATION`, routed to `quarantyne.quarantine`, logged to `violation_audit_log` with the full before/after payload and detection reasoning
-3. Open the dashboard → see the violation reflected in real time, click into it for full detail (before/after diff, detection reasoning, newly-introduced-field flag)
+**Live enforcement:**
+1. Insert a clean row into `customers` (no PII) → observe `COMPLIANT`, routed to `quarantyne.approved`
+2. Update that row to add a `phone` value → observe `VIOLATION`, routed to `quarantyne.quarantine`, logged to `violation_audit_log`
+3. Open the dashboard → see the violation reflected in real time; click the row for the full detail modal (before/after diff, detection reasoning, newly-introduced-field flag, PII masked)
+
+**Policy hot-reload:**
+4. Edit `policy.yaml` to add `phone` to `allowed_pii_fields` for `public.customers`
+5. The consumer prints `Policy config reloaded` within one poll tick — no restart
+6. Repeat step 2 → now routes to `quarantyne.approved` (phone now permitted)
+
+**Policy replay:**
+7. Run `python3 replay_demo.py` — reprocesses the full Kafka topic from offset 0 through the current policy
+8. Any events that would have different outcomes under the new policy are flagged as `outcome changed`
