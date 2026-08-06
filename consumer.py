@@ -292,7 +292,10 @@ def run() -> None:
         print("\nStopped by user.")
         if last_processed_msg is not None and msgs_since_batch > 0:
             print(f"Flushing {msgs_since_batch} pending message(s) before exit...")
-            flush_batch(producer, db, consumer, last_processed_msg, pending_violations, label="shutdown")
+            try:
+                flush_batch(producer, db, consumer, last_processed_msg, pending_violations, label="shutdown")
+            except Exception as e:
+                print(f"  [ERROR] Shutdown flush failed: {e} — pending batch may be redelivered on next start")
     finally:
         consumer.close()
         db.close()
