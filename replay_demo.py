@@ -66,7 +66,7 @@ def run() -> None:
     total = 0
     compliant = 0
     violations = 0
-    changed_outcome = 0   # events where outcome differs from original policy (phone now allowed)
+    changed_outcome = 0   # COMPLIANT events that have detected PII (would have been VIOLATION under a stricter policy)
     last_msg_time = time.time()
 
     try:
@@ -115,13 +115,14 @@ def run() -> None:
             else:
                 violations += 1
 
-            # Flag events where phone was detected but decision is now COMPLIANT
-            # (these would have been VIOLATION under the original [] allow-list)
-            phone_fields = [f for f in pii_result["detected_fields"] if "phone" in f.lower()]
-            if decision == "COMPLIANT" and phone_fields:
+            # Flag COMPLIANT events that still contain detected PII — these are
+            # fields explicitly allowed by the current policy. Under a stricter
+            # (empty) allowlist they would have been VIOLATION.
+            allowed_pii = [f for f in pii_result["detected_fields"] if f not in policy_result["unauthorized_fields"]]
+            if decision == "COMPLIANT" and allowed_pii:
                 changed_outcome += 1
-                print(f"  → COMPLIANT  *** outcome changed: phone now allowed (was VIOLATION) ***")
-                print(f"     phone fields: {phone_fields}")
+                print(f"  → COMPLIANT  *** outcome changed: PII allowed by current policy (was VIOLATION) ***")
+                print(f"     allowed fields: {allowed_pii}")
             else:
                 print(f"  → {decision}")
                 if pii_result["detected_fields"]:
@@ -139,7 +140,7 @@ def run() -> None:
     print(f"  Total events processed : {total}")
     print(f"  COMPLIANT              : {compliant}")
     print(f"  VIOLATION              : {violations}")
-    print(f"  Outcome changed        : {changed_outcome}  (phone violations → COMPLIANT under new policy)")
+    print(f"  Outcome changed        : {changed_outcome}  (PII present but allowed by current policy)")
     print(f"  Consumer group         : {GROUP_ID}")
     print(f"  Policy evaluated       : policy.yaml (current state)")
     print("────────────────────────────────────────────────────")
