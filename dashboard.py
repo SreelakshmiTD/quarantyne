@@ -340,6 +340,13 @@ with st.sidebar:
     selected_table = st.selectbox("Table", options=table_names)
     field_search = st.text_input("Unauthorized Field", placeholder="e.g. email", key="field_search_input")
 
+    # Reset page to 1 whenever filters change
+    if (selected_table != st.session_state.get("_prev_table")
+            or field_search != st.session_state.get("_prev_field")):
+        st.session_state["page_input"] = 1
+    st.session_state["_prev_table"] = selected_table
+    st.session_state["_prev_field"] = field_search
+
     st.markdown("**Page**")
     page = st.number_input("Page", min_value=1, value=1, step=1, label_visibility="collapsed", key="page_input")
 
