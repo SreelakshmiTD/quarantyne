@@ -186,6 +186,22 @@ def metric_card(label: str, value: str, color: str) -> None:
     )
 
 
+def _paginator_items(current: int, total: int) -> list:
+    """Return page numbers and None (ellipsis) for the paginator strip."""
+    pages = sorted(
+        set(range(1, min(3, total + 1)))
+        | set(range(max(1, total - 1), total + 1))
+        | set(range(max(1, current - 2), min(total + 1, current + 3)))
+    )
+    result, prev = [], None
+    for p in pages:
+        if prev is not None and p - prev > 1:
+            result.append(None)  # ellipsis slot
+        result.append(p)
+        prev = p
+    return ["←"] + result + ["→"]
+
+
 def field_badges(fields: list, border: str = "#dc2626", fg: str = "#dc2626", bg: str = "#fff1f2") -> None:
     if not fields:
         st.markdown('<span style="color:#9ca3af;font-style:italic;">none</span>', unsafe_allow_html=True)
@@ -481,17 +497,36 @@ if not violations:
     st.info("No violations match the current filters.")
     st.stop()
 
-prev_col, info_col, next_col = st.columns([1, 8, 1])
-with prev_col:
-    if st.button("←", disabled=current_page <= 1, use_container_width=True):
-        st.session_state["page_input"] = current_page - 1
-        st.rerun()
-with info_col:
-    st.caption(f"Page {current_page} of {total_pages} · {total_violations:,} total violations · select a row then click View Details")
-with next_col:
-    if st.button("→", disabled=current_page >= total_pages, use_container_width=True):
-        st.session_state["page_input"] = current_page + 1
-        st.rerun()
+st.caption(f"Page {current_page} of {total_pages} · {total_violations:,} total violations · select a row then click View Details")
+
+pager = _paginator_items(current_page, total_pages)
+for col, item in zip(st.columns(len(pager)), pager):
+    with col:
+        if item == "←":
+            if st.button("←", disabled=current_page <= 1, use_container_width=True):
+                st.session_state["page_input"] = current_page - 1
+                st.rerun()
+        elif item == "→":
+            if st.button("→", disabled=current_page >= total_pages, use_container_width=True):
+                st.session_state["page_input"] = current_page + 1
+                st.rerun()
+        elif item is None:
+            st.markdown(
+                '<p style="text-align:center;margin-top:6px;color:#9ca3af;">…</p>',
+                unsafe_allow_html=True,
+            )
+        elif item == current_page:
+            st.markdown(
+                f'<div style="text-align:center;margin-top:4px;">'
+                f'<span style="background:#2563eb;color:#fff;border-radius:4px;'
+                f'padding:5px 10px;font-size:0.875rem;font-weight:600;">{item}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            if st.button(str(item), use_container_width=True):
+                st.session_state["page_input"] = item
+                st.rerun()
 
 display_rows = [
     {
