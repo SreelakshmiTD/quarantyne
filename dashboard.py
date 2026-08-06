@@ -402,11 +402,16 @@ with chart_l:
     if not df_time.empty:
         chart = (
             alt.Chart(df_time.reset_index())
-            .mark_line(color="#ef4444")
+            .mark_line(color="#ef4444", point=alt.OverlayMarkDef(color="#ef4444", size=50))
             .encode(
                 x=alt.X("hour:T", title=None),
                 y=alt.Y("violations:Q", title="violations", scale=alt.Scale(domainMin=0)),
+                tooltip=[
+                    alt.Tooltip("hour:T", title="Time", format="%b %d %H:%M"),
+                    alt.Tooltip("violations:Q", title="Violations"),
+                ],
             )
+            .interactive()
         )
         st.altair_chart(chart, use_container_width=True)
     else:
@@ -415,7 +420,19 @@ with chart_l:
 with chart_r:
     st.markdown('<div class="q-section">PII Type Breakdown</div>', unsafe_allow_html=True)
     if not df_pii.empty:
-        st.bar_chart(df_pii, color="#f59e0b", use_container_width=True)
+        chart = (
+            alt.Chart(df_pii.reset_index())
+            .mark_bar(color="#f59e0b")
+            .encode(
+                x=alt.X("count:Q", title="violations"),
+                y=alt.Y("field:N", sort="-x", title=None),
+                tooltip=[
+                    alt.Tooltip("field:N", title="Field"),
+                    alt.Tooltip("count:Q", title="Violations"),
+                ],
+            )
+        )
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.caption("No data yet.")
 
@@ -448,8 +465,8 @@ display_rows = [
         "timestamp": row["event_timestamp"],
         "table": row["table_name"],
         "operation": row["operation"],
-        "unauthorized_fields": row["unauthorized_fields"],
-        "detected_fields": row["detected_fields"],
+        "unauthorized_fields": ", ".join(row["unauthorized_fields"] or []),
+        "detected_fields": ", ".join(row["detected_fields"] or []),
     }
     for row in violations
 ]
@@ -465,8 +482,8 @@ selected = st.dataframe(
         "timestamp": st.column_config.DatetimeColumn("Timestamp", format="YYYY-MM-DD HH:mm:ss"),
         "table": "Table",
         "operation": st.column_config.TextColumn("Operation", width="small"),
-        "unauthorized_fields": "Unauthorized Fields",
-        "detected_fields": "Detected Fields",
+        "unauthorized_fields": st.column_config.TextColumn("Unauthorized Fields"),
+        "detected_fields": st.column_config.TextColumn("Detected Fields"),
     },
 )
 
