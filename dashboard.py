@@ -26,16 +26,19 @@ def get_connection():
     return psycopg2.connect(**DB_CONFIG)
 
 
-def fetch_summary(conn):
+def fetch_summary(conn, table_filter=None):
+    where = "WHERE table_name = %s" if table_filter else ""
+    params = [table_filter] if table_filter else []
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT
                 COUNT(*) FILTER (WHERE decision != 'DELETED') AS total,
                 COUNT(*) FILTER (WHERE decision = 'COMPLIANT') AS compliant,
                 COUNT(*) FILTER (WHERE decision = 'VIOLATION') AS violations,
                 COUNT(*) FILTER (WHERE decision = 'DELETED')  AS deletes
             FROM processing_log
-        """)
+            {where}
+        """, params)
         row = cur.fetchone()
     total, compliant, violations, deletes = row
     rate = (violations / total * 100) if total else 0.0
@@ -444,7 +447,7 @@ st.markdown(
 st.markdown('<div class="q-section">Processing Health</div>', unsafe_allow_html=True)
 
 try:
-    summary = fetch_summary(conn)
+    summary = fetch_summary(conn, table_filter)
 except Exception as e:
     st.error(f"Failed to load summary: {e}")
     st.stop()
