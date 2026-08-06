@@ -332,12 +332,16 @@ st.markdown("""
 }
 
 /* Sidebar Refresh button — blue, scoped to sidebar only */
-[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+[data-testid="stSidebar"] button[kind="primary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] .stButton > button {
     background-color: #2563eb;
     border-color: #2563eb;
     color: #ffffff;
 }
-[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
+[data-testid="stSidebar"] button[kind="primary"]:hover,
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover,
+[data-testid="stSidebar"] .stButton > button:hover {
     background-color: #1d4ed8;
     border-color: #1d4ed8;
     color: #ffffff;
@@ -387,23 +391,20 @@ page = st.session_state.get("page_input", 1)
 
 # ── Header ────────────────────────────────────────────────────────────────────
 
-st.markdown("# Quarantyne")
-st.markdown(
-    '<p style="color:#9ca3af;margin-top:-14px;margin-bottom:4px;">'
-    "Real-Time Privacy Enforcement for CDC Streams</p>",
-    unsafe_allow_html=True,
-)
-
 try:
     last_updated = fetch_last_updated(conn)
 except Exception:
     last_updated = None
 ts_str = last_updated.strftime("%Y-%m-%d %H:%M:%S UTC") if last_updated else "—"
-st.caption(f"Last event: {ts_str}")
+
+st.markdown(
+    '<p style="font-size:1rem;font-weight:600;margin-bottom:0;">Real-Time Privacy Enforcement for CDC Streams</p>'
+    f'<p style="color:#9ca3af;font-size:0.8rem;margin-top:2px;">Last event: {ts_str}</p>',
+    unsafe_allow_html=True,
+)
 
 # ── Processing Health ─────────────────────────────────────────────────────────
 
-st.markdown("---")
 st.markdown('<div class="q-section">Processing Health</div>', unsafe_allow_html=True)
 
 try:
