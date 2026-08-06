@@ -400,19 +400,19 @@ chart_l, chart_r = st.columns(2)
 with chart_l:
     st.markdown('<div class="q-section">Violations Over Time</div>', unsafe_allow_html=True)
     if not df_time.empty:
-        chart = (
-            alt.Chart(df_time.reset_index())
-            .mark_line(color="#ef4444", point=alt.OverlayMarkDef(color="#ef4444", size=50))
-            .encode(
-                x=alt.X("hour:T", title=None),
-                y=alt.Y("violations:Q", title="violations", scale=alt.Scale(domainMin=0)),
-                tooltip=[
-                    alt.Tooltip("hour:T", title="Time", format="%b %d %H:%M"),
-                    alt.Tooltip("violations:Q", title="Violations"),
-                ],
-            )
-            .interactive()
+        base = alt.Chart(df_time.reset_index()).encode(
+            x=alt.X("hour:T", title=None),
+            y=alt.Y("violations:Q", title="violations", scale=alt.Scale(domainMin=0)),
+            tooltip=[
+                alt.Tooltip("hour:T", title="Time", format="%b %d %H:%M"),
+                alt.Tooltip("violations:Q", title="Violations"),
+            ],
         )
+        chart = (
+            base.mark_area(color="#ef4444", opacity=0.12)
+            + base.mark_line(color="#ef4444", strokeWidth=2)
+            + base.mark_point(color="#ef4444", size=40, filled=True)
+        ).interactive()
         st.altair_chart(chart, use_container_width=True)
     else:
         st.caption("No data yet.")
@@ -422,10 +422,10 @@ with chart_r:
     if not df_pii.empty:
         chart = (
             alt.Chart(df_pii.reset_index())
-            .mark_bar(color="#f59e0b")
+            .mark_bar(color="#f59e0b", cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
             .encode(
-                x=alt.X("count:Q", title="violations"),
-                y=alt.Y("field:N", sort="-x", title=None),
+                x=alt.X("field:N", sort="-y", title=None, axis=alt.Axis(labelAngle=-45)),
+                y=alt.Y("count:Q", title="violations"),
                 tooltip=[
                     alt.Tooltip("field:N", title="Field"),
                     alt.Tooltip("count:Q", title="Violations"),
