@@ -395,12 +395,6 @@ except Exception as e:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown(
-        '<div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;'
-        'letter-spacing:0.1em;color:#9ca3af;margin-bottom:1rem;">'
-        "Privacy Enforcement Dashboard</div>",
-        unsafe_allow_html=True,
-    )
     if st.button("Refresh", type="primary", use_container_width=True):
         st.rerun()
 
