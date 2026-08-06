@@ -287,6 +287,12 @@ st.markdown("""
     border-right: 1px solid rgba(128,128,128,0.2);
 }
 
+/* sidebar top accent bar */
+[data-testid="stSidebar"] > div:first-child {
+    border-top: 4px solid #2563eb;
+    padding-top: 1.2rem;
+}
+
 /* metric cards — follow theme for bg/text, hardcoded semantic accents */
 .q-card {
     border-left: 4px solid;
@@ -331,17 +337,15 @@ st.markdown("""
     margin-bottom: 0.75rem;
 }
 
-/* Sidebar Refresh button — blue, scoped to sidebar only */
-[data-testid="stSidebar"] button[kind="primary"],
-[data-testid="stSidebar"] [data-testid="stBaseButton-primary"],
-[data-testid="stSidebar"] .stButton > button {
+/* All primary buttons — brand blue (Refresh, View Details, etc.) */
+button[kind="primary"],
+[data-testid="stBaseButton-primary"] {
     background-color: #2563eb;
     border-color: #2563eb;
     color: #ffffff;
 }
-[data-testid="stSidebar"] button[kind="primary"]:hover,
-[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover,
-[data-testid="stSidebar"] .stButton > button:hover {
+button[kind="primary"]:hover,
+[data-testid="stBaseButton-primary"]:hover {
     background-color: #1d4ed8;
     border-color: #1d4ed8;
     color: #ffffff;
@@ -402,7 +406,7 @@ st.markdown(
     'color:#2563eb;margin:0 0 4px 0;line-height:1.1;">Quarantyne</h1>'
     '<p style="color:#4b5563;font-size:0.95rem;font-weight:500;margin:0 0 2px 0;">'
     "Real-Time Privacy Enforcement for CDC Streams</p>"
-    f'<p style="color:#9ca3af;font-size:0.78rem;margin:0 0 1.5rem 0;">Last event: {ts_str}</p>',
+    f'<p style="color:#9ca3af;font-size:0.78rem;margin:0 0 2.5rem 0;">Last event: {ts_str}</p>',
     unsafe_allow_html=True,
 )
 
@@ -416,7 +420,7 @@ except Exception as e:
     st.error(f"Failed to load summary: {e}")
     st.stop()
 
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2, c3, c4 = st.columns(4)
 with c1:
     metric_card("Total Processed", f"{summary['total']:,}", "neutral")
 with c2:
@@ -425,8 +429,7 @@ with c3:
     metric_card("Violations", f"{summary['violations']:,}", "red")
 with c4:
     metric_card("Violation Rate", f"{summary['rate']:.1f}%", "amber")
-with c5:
-    metric_card("Deletes", f"{summary['deletes']:,}", "neutral")
+st.caption(f"{summary['deletes']:,} delete event(s) excluded from counts")
 
 # ── Charts ────────────────────────────────────────────────────────────────────
 
