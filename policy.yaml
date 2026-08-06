@@ -1,7 +1,9 @@
 tables:
   public.customers:
-    allowed_pii_fields: []
+    allowed_pii_fields: ["email"]   # CRM use case: email is a permitted contact field
+  public.employees:
+    allowed_pii_fields: []          # HR data: no PII may flow without explicit consent
   public.orders:
     allowed_pii_fields: []
-  public.customers_partial_test:
-    allowed_pii_fields: ["email"]
+  public.payments:
+    allowed_pii_fields: []
