@@ -19,52 +19,71 @@ PATTERN_FIELD_HINTS: dict[str, set[str]] = {
 }
 
 
+def _scan_field(path: str, value, detected_fields: list, detection_reasons: dict) -> None:
+    """
+    Scan a single field for PII, recursing into dict values (one level at a time).
+
+    - path: dotted key path, e.g. "contact.email" for a nested field
+    - Leaf-key name is used for field-name and pattern-hint matching throughout.
+    - Lists of dicts are not recursed into (out of scope for v1).
+    """
+    if isinstance(value, dict):
+        for nested_key, nested_val in value.items():
+            _scan_field(f"{path}.{nested_key}", nested_val, detected_fields, detection_reasons)
+        return
+
+    leaf = path.split(".")[-1]
+
+    if leaf.lower() in SENSITIVE_FIELD_NAMES and value is not None and value != "":
+        detected_fields.append(path)
+        detection_reasons[path] = "field_name_match"
+        return
+
+    if value is not None:
+        str_value = str(value)
+        leaf_lower = leaf.lower()
+        for pii_type, pattern in PATTERNS.items():
+            if not pattern.search(str_value):
+                continue
+            hints = PATTERN_FIELD_HINTS[pii_type]
+            if hints and not any(h in leaf_lower for h in hints):
+                continue
+            detected_fields.append(path)
+            detection_reasons[path] = "pattern_match"
+            break
+
+
 def detect_pii_in_payload(payload: dict) -> dict:
     """
     Scan a Debezium 'after' object for PII.
 
     Two independent detection signals are used:
 
-    1. field_name_match: the field name exactly matches a known sensitive name
+    1. field_name_match: the leaf field name exactly matches a known sensitive name
        (email, phone, ssn, credit_card, address, dob, phone_number) AND the
        value is non-null and non-empty.
 
     2. pattern_match: the field value matches a regex for a PII type AND the
-       field name contains a plausible substring for that type, reducing false
-       positives from coincidental numeric matches in unrelated fields:
+       leaf field name contains a plausible substring for that type, reducing
+       false positives from coincidental numeric matches in unrelated fields:
          - phone pattern    → field name must contain: phone, mobile, contact, cell
          - credit_card      → field name must contain: card, payment, credit
          - ssn              → field name must contain: ssn, social, tax_id
          - email pattern    → no field-name requirement (the regex is specific enough)
 
-    A field already matched by field_name_match is not re-evaluated for pattern_match.
+    Nested dict values are recursed into; detected field paths use dot notation
+    (e.g. "contact.email"). Lists of dicts are not recursed into.
 
     Returns a dict with:
       - has_pii: True if any field was flagged
-      - detected_fields: list of field names that were flagged
-      - detection_reasons: mapping of field name to "field_name_match" or "pattern_match"
+      - detected_fields: list of field paths that were flagged
+      - detection_reasons: mapping of field path to "field_name_match" or "pattern_match"
     """
     detected_fields = []
     detection_reasons = {}
 
     for field, value in payload.items():
-        if field.lower() in SENSITIVE_FIELD_NAMES and value is not None and value != "":
-            detected_fields.append(field)
-            detection_reasons[field] = "field_name_match"
-            continue
-
-        if value is not None:
-            str_value = str(value)
-            field_lower = field.lower()
-            for pii_type, pattern in PATTERNS.items():
-                if not pattern.search(str_value):
-                    continue
-                hints = PATTERN_FIELD_HINTS[pii_type]
-                if hints and not any(h in field_lower for h in hints):
-                    continue
-                detected_fields.append(field)
-                detection_reasons[field] = "pattern_match"
-                break
+        _scan_field(field, value, detected_fields, detection_reasons)
 
     return {
         "has_pii": len(detected_fields) > 0,

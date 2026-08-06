@@ -10,6 +10,6 @@
     "database.server.name": "quarantyne",
     "topic.prefix": "quarantyne",
     "plugin.name": "pgoutput",
-    "table.include.list": "public.customers"
+    "table.include.list": "public.customers,public.orders"
   }
 }

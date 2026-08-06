@@ -1,8 +1,8 @@
 CREATE TABLE violation_audit_log (
     id                       SERIAL PRIMARY KEY,
-    event_timestamp          TIMESTAMPTZ,
-    table_name               TEXT,
-    operation                TEXT,
+    event_timestamp          TIMESTAMPTZ NOT NULL,
+    table_name               TEXT        NOT NULL,
+    operation                TEXT        NOT NULL,
     unauthorized_fields      JSONB,
     detected_fields          JSONB,
     detection_reasons        JSONB,

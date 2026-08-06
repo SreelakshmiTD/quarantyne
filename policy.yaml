@@ -1,5 +1,7 @@
 tables:
   public.customers:
     allowed_pii_fields: []
+  public.orders:
+    allowed_pii_fields: []
   public.customers_partial_test:
     allowed_pii_fields: ["email"]

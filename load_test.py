@@ -1,14 +1,18 @@
+import os
 import random
 import time
 
 import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DB_CONFIG = {
-    "host": "localhost",
-    "port": 5433,
-    "user": "privacypulse",
-    "password": "privacypulse",
-    "dbname": "privacypulse_db",
+    "host": os.getenv("POSTGRES_HOST", "localhost"),
+    "port": int(os.getenv("POSTGRES_PORT", 5433)),
+    "user": os.getenv("POSTGRES_USER"),
+    "password": os.getenv("POSTGRES_PASSWORD"),
+    "dbname": os.getenv("POSTGRES_DB"),
 }
 
 SEGMENTS = ["premium", "standard", "trial", "enterprise"]

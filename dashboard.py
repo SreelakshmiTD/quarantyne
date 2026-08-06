@@ -1,14 +1,19 @@
+import os
+
 import psycopg2
 import psycopg2.extras
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DB_CONFIG = {
-    "host": "localhost",
-    "port": 5433,
-    "user": "privacypulse",
-    "password": "privacypulse",
-    "dbname": "privacypulse_db",
+    "host": os.getenv("POSTGRES_HOST", "localhost"),
+    "port": int(os.getenv("POSTGRES_PORT", 5433)),
+    "user": os.getenv("POSTGRES_USER"),
+    "password": os.getenv("POSTGRES_PASSWORD"),
+    "dbname": os.getenv("POSTGRES_DB"),
 }
 
 
@@ -41,7 +46,11 @@ def fetch_table_names(conn):
         return ["(all)"] + [r[0] for r in cur.fetchall()]
 
 
-def fetch_violations(conn, table_filter=None, field_search=None):
+PAGE_SIZE = 50
+
+
+def _violation_where(table_filter, field_search):
+    """Build shared WHERE clause and params for violation queries."""
     conditions, params = [], []
     if table_filter:
         conditions.append("table_name = %s")
@@ -50,6 +59,19 @@ def fetch_violations(conn, table_filter=None, field_search=None):
         conditions.append("unauthorized_fields ? %s")
         params.append(field_search.strip().lower())
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    return where, params
+
+
+def fetch_violation_count(conn, table_filter=None, field_search=None):
+    where, params = _violation_where(table_filter, field_search)
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT COUNT(*) FROM violation_audit_log {where}", params if params else [])
+        return cur.fetchone()[0]
+
+
+def fetch_violations(conn, table_filter=None, field_search=None, page=1):
+    where, params = _violation_where(table_filter, field_search)
+    offset = (page - 1) * PAGE_SIZE
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             f"""
@@ -60,9 +82,9 @@ def fetch_violations(conn, table_filter=None, field_search=None):
             FROM violation_audit_log
             {where}
             ORDER BY event_timestamp DESC
-            LIMIT 50
+            LIMIT %s OFFSET %s
             """,
-            params if params else [],
+            (params + [PAGE_SIZE, offset]) if params else [PAGE_SIZE, offset],
         )
         return cur.fetchall()
 
@@ -97,6 +119,49 @@ def fetch_pii_breakdown(conn):
         return pd.DataFrame()
     df = pd.DataFrame(rows, columns=["field", "count"])
     return df.set_index("field")
+
+
+# ── PII masking ──────────────────────────────────────────────────────────────
+
+_EMAIL_FIELDS = {"email", "e_mail", "email_address"}
+_PHONE_FIELDS = {"phone", "phone_number", "mobile", "mobile_number", "cell"}
+_UNMASKED_FIELDS = {"customer_id", "segment", "country", "id"}
+
+
+def mask_pii_value(field_name: str, value) -> str:
+    if value is None:
+        return None
+    s = str(value)
+    name = field_name.lower()
+    if name in _EMAIL_FIELDS or "@" in s:
+        at = s.find("@")
+        if at >= 0:
+            return s[:2] + "***" + s[at:]
+        return s[:2] + "***"
+    if name in _PHONE_FIELDS:
+        digits = "".join(c for c in s if c.isdigit())
+        return "***-***-" + digits[-4:] if len(digits) >= 4 else "***"
+    return s[:2] + "***"
+
+
+def _mask_dict(obj: dict, sensitive: set, prefix: str = "") -> dict:
+    result = {}
+    for k, v in obj.items():
+        path = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict):
+            result[k] = _mask_dict(v, sensitive, path)
+        elif path.lower() in sensitive and k.lower() not in _UNMASKED_FIELDS:
+            result[k] = mask_pii_value(k, v)
+        else:
+            result[k] = v
+    return result
+
+
+def mask_payload(payload: dict, detected_fields: list) -> dict:
+    if not payload:
+        return payload
+    sensitive = {f.lower() for f in (detected_fields or [])}
+    return _mask_dict(payload, sensitive)
 
 
 # ── UI helpers ────────────────────────────────────────────────────────────────
@@ -146,12 +211,13 @@ def show_violation_detail(row: dict) -> None:
 
     st.markdown("---")
 
-    # Before / After
+    # Before / After (PII values masked for display)
+    detected = row.get("detected_fields") or []
     col_before, col_after = st.columns(2)
     with col_before:
         st.markdown("**Before**")
         if row.get("raw_before_payload"):
-            st.json(row["raw_before_payload"])
+            st.json(mask_payload(dict(row["raw_before_payload"]), detected))
         else:
             st.markdown(
                 '<p style="color:#9ca3af;font-style:italic;font-size:0.9rem;">'
@@ -160,7 +226,12 @@ def show_violation_detail(row: dict) -> None:
             )
     with col_after:
         st.markdown("**After**")
-        st.json(row["raw_after_payload"])
+        st.json(mask_payload(dict(row["raw_after_payload"]), detected))
+
+    st.caption(
+        "PII values are masked for display. "
+        "Full values are available in the audit log with appropriate access controls."
+    )
 
     st.markdown("---")
     st.markdown("**Detection Reasons**")
@@ -259,6 +330,9 @@ with st.sidebar:
     selected_table = st.selectbox("Table", options=table_names)
     field_search = st.text_input("Unauthorized Field", placeholder="e.g. email", key="field_search_input")
 
+    st.markdown("**Page**")
+    page = st.number_input("Page", min_value=1, value=1, step=1, label_visibility="collapsed", key="page_input")
+
 table_filter = None if selected_table == "(all)" else selected_table
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -278,6 +352,7 @@ st.markdown('<div class="q-section">Processing Health</div>', unsafe_allow_html=
 try:
     summary = fetch_summary(conn)
 except Exception as e:
+    conn.close()
     st.error(f"Failed to load summary: {e}")
     st.stop()
 
@@ -322,20 +397,24 @@ with chart_r:
 
 st.markdown("---")
 st.markdown('<div class="q-section">Policy Violations</div>', unsafe_allow_html=True)
-st.caption("Most recent 50 · filtered by sidebar · select a row then click View Details")
 st.markdown("<div style='margin-bottom:0.4rem'></div>", unsafe_allow_html=True)
 
 try:
-    violations = fetch_violations(conn, table_filter, field_search or None)
+    total_violations = fetch_violation_count(conn, table_filter, field_search or None)
+    total_pages = max(1, -(-total_violations // PAGE_SIZE))  # ceiling division
+    current_page = min(int(page), total_pages)
+    violations = fetch_violations(conn, table_filter, field_search or None, page=current_page)
 except Exception as e:
     st.error(f"Failed to load violations: {e}")
     st.stop()
-
-conn.close()
+finally:
+    conn.close()
 
 if not violations:
     st.info("No violations match the current filters.")
     st.stop()
+
+st.caption(f"Page {current_page} of {total_pages} · {total_violations:,} total violations · select a row then click View Details")
 
 display_rows = [
     {

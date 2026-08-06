@@ -1,17 +1,24 @@
 import json
+import os
 import time
 from datetime import datetime, timezone
 
 import psycopg2
 import psycopg2.extras
 from confluent_kafka import Consumer, Producer, KafkaError, KafkaException
+from dotenv import load_dotenv
 
 from detector import detect_pii_in_payload, diff_before_after
 from policy import load_policy_config, evaluate_policy
 
-KAFKA_BROKER = "localhost:9092"
-TOPIC = "quarantyne.public.customers"
-GROUP_ID = "quarantyne-consumer"
+load_dotenv()
+
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
+POLICY_FILE   = os.path.join(os.path.dirname(__file__), "policy.yaml")
+# Pattern matches quarantyne.public.* (CDC intake topics) only.
+# Does NOT match quarantyne.approved or quarantyne.quarantine — those lack ".public." in their name.
+TOPIC_PATTERN = r"^quarantyne\.public\..+"
+GROUP_ID = os.getenv("KAFKA_GROUP_ID", "quarantyne-consumer")
 TOPIC_APPROVED = "quarantyne.approved"
 TOPIC_QUARANTINE = "quarantyne.quarantine"
 
@@ -54,24 +61,28 @@ def flush_batch(
 ) -> None:
     """Flush producer, commit any pending Postgres audit inserts, commit Kafka offset."""
     producer.flush()
-    if pending_violations > 0:
-        db.commit()
+    db.commit()
     consumer.commit(message=last_msg)
     print(f"  [BATCH FLUSH ({label})] producer flushed | {pending_violations} audit insert(s) committed | offset committed")
 
 
 def run() -> None:
-    policy_config = load_policy_config("policy.yaml")
+    try:
+        policy_config = load_policy_config(POLICY_FILE)
+    except Exception as e:
+        print(f"[FATAL] Could not load policy config from {POLICY_FILE}: {e}")
+        return
+    policy_mtime  = os.path.getmtime(POLICY_FILE)
     print("Policy config loaded.\n")
 
     producer = Producer({"bootstrap.servers": KAFKA_BROKER})
 
     db = psycopg2.connect(
-        host="localhost",
-        port=5433,
-        user="privacypulse",
-        password="privacypulse",
-        dbname="privacypulse_db",
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        port=int(os.getenv("POSTGRES_PORT", 5433)),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        dbname=os.getenv("POSTGRES_DB"),
     )
     print("Postgres connection established.\n")
 
@@ -79,12 +90,12 @@ def run() -> None:
         {
             "bootstrap.servers": KAFKA_BROKER,
             "group.id": GROUP_ID,
-            "auto.offset.reset": "earliest",
+            "auto.offset.reset": "latest",
             "enable.auto.commit": False,
         }
     )
-    consumer.subscribe([TOPIC])
-    print(f"Subscribed to {TOPIC}. Waiting for messages...\n")
+    consumer.subscribe([TOPIC_PATTERN])
+    print(f"Subscribed via pattern: {TOPIC_PATTERN}\n")
 
     # Batch state
     msgs_since_batch = 0      # messages processed since last flush (including deletes)
@@ -92,7 +103,8 @@ def run() -> None:
     last_processed_msg = None # last message successfully processed; used for offset commit
     last_flush_time = time.time()  # time of last batch flush; used for time-based flush trigger
 
-    # TEMPORARY: throughput instrumentation for load testing
+    # Throughput and latency instrumentation — intentional, permanent observability.
+    # These counters produced the performance numbers documented in the README.
     total_msg_count = 0
     first_msg_time = None
     batch_start_time = None
@@ -101,6 +113,16 @@ def run() -> None:
     try:
         while True:
             msg = consumer.poll(timeout=1.0)
+
+            # Policy hot-reload: runs on every poll tick, including idle (msg is None)
+            current_mtime = os.path.getmtime(POLICY_FILE)
+            if current_mtime != policy_mtime:
+                try:
+                    policy_config = load_policy_config(POLICY_FILE)
+                    policy_mtime  = current_mtime
+                    print(f"Policy config reloaded from {POLICY_FILE}")
+                except Exception as e:
+                    print(f"  [WARN] Policy reload failed — keeping previous config: {e}")
 
             # Time-based flush: runs on every poll tick, including idle (msg is None)
             if last_processed_msg is not None and msgs_since_batch > 0:
@@ -136,18 +158,32 @@ def run() -> None:
             if after is None:
                 print(f"  op: {OP_LABELS.get(op, op)}")
                 print("  after is None — skipping PII detection (delete event)")
-                last_processed_msg = msg
-                msgs_since_batch += 1
-                if msgs_since_batch >= PRODUCER_FLUSH_EVERY:
-                    flush_batch(producer, db, consumer, last_processed_msg, pending_violations)
-                    msgs_since_batch = 0
-                    pending_violations = 0
-                    last_flush_time = time.time()
+                try:
+                    with db.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO processing_log (event_timestamp, table_name, decision, raw_before_payload)
+                            VALUES (%s, %s, %s, %s)
+                            """,
+                            (datetime.now(timezone.utc), table_name, "DELETED", psycopg2.extras.Json(before)),
+                        )
+                    print(f"  processing_log:          DELETED staged (pending flush)")
+                    last_processed_msg = msg
+                    msgs_since_batch += 1
+                    if msgs_since_batch >= PRODUCER_FLUSH_EVERY:
+                        flush_batch(producer, db, consumer, last_processed_msg, pending_violations)
+                        msgs_since_batch = 0
+                        pending_violations = 0
+                        last_flush_time = time.time()
+                except Exception as e:
+                    db.rollback()
+                    print(f"  [ERROR] Failed to stage delete log at offset {msg.offset()}: {e}")
+                    print(f"  [ERROR] Staged insert rolled back. Offset NOT committed.\n")
                 print()
                 continue
 
             try:
-                _msg_start = time.time()  # TEMPORARY: per-message timing
+                _msg_start = time.time()  # per-message latency start
 
                 pii_result = detect_pii_in_payload(after)
                 diff_result = diff_before_after(before, after)
@@ -196,7 +232,7 @@ def run() -> None:
                 last_processed_msg = msg
                 msgs_since_batch += 1
 
-                # TEMPORARY: throughput instrumentation for load testing
+                # Per-message latency tracking for batch throughput summary.
                 _msg_latency = time.time() - _msg_start
                 batch_latencies.append(_msg_latency)
                 total_msg_count += 1
@@ -215,7 +251,7 @@ def run() -> None:
                     pending_violations = 0
                     last_flush_time = time.time()
 
-                    # TEMPORARY: batch throughput summary
+                    # Batch throughput summary — printed on every flush.
                     batch_elapsed = time.time() - batch_start_time
                     total_elapsed = time.time() - first_msg_time
                     batch_mps = len(batch_latencies) / batch_elapsed if batch_elapsed > 0 else float("inf")
