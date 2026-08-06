@@ -47,7 +47,7 @@ def run() -> None:
     policy_config = load_policy_config(os.path.join(os.path.dirname(__file__), "policy.yaml"))
     print("Policy loaded:")
     for table, cfg in policy_config.get("tables", {}).items():
-        print(f"  {table}: allowed_pii_fields = {cfg.get('allowed_pii_fields', [])}")
+        print(f"  {table}: allowed_pii_fields = {(cfg or {}).get('allowed_pii_fields', [])}")
     print()
 
     consumer = Consumer({
@@ -90,13 +90,17 @@ def run() -> None:
             if raw is None:
                 continue
 
-            envelope = json.loads(raw)
-            payload  = envelope.get("payload", envelope)
-            op       = payload.get("op")
-            before   = payload.get("before")
-            after    = payload.get("after")
-            source   = payload.get("source", {})
-            table_name = f"{source.get('schema', 'unknown')}.{source.get('table', 'unknown')}"
+            try:
+                envelope = json.loads(raw)
+                payload  = envelope.get("payload", envelope)
+                op       = payload.get("op")
+                before   = payload.get("before")
+                after    = payload.get("after")
+                source   = payload.get("source", {})
+                table_name = f"{source.get('schema', 'unknown')}.{source.get('table', 'unknown')}"
+            except (json.JSONDecodeError, AttributeError, TypeError) as e:
+                print(f"  [SKIP] Unparseable message at offset {msg.offset()}: {e}\n")
+                continue
 
             total += 1
             print(f"[offset={msg.offset()}] table={table_name} op={OP_LABELS.get(op, op)}")
