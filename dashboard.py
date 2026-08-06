@@ -27,15 +27,16 @@ def fetch_summary(conn):
     with conn.cursor() as cur:
         cur.execute("""
             SELECT
-                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE decision != 'DELETED') AS total,
                 COUNT(*) FILTER (WHERE decision = 'COMPLIANT') AS compliant,
-                COUNT(*) FILTER (WHERE decision = 'VIOLATION') AS violations
+                COUNT(*) FILTER (WHERE decision = 'VIOLATION') AS violations,
+                COUNT(*) FILTER (WHERE decision = 'DELETED')  AS deletes
             FROM processing_log
         """)
         row = cur.fetchone()
-    total, compliant, violations = row
+    total, compliant, violations, deletes = row
     rate = (violations / total * 100) if total else 0.0
-    return {"total": total, "compliant": compliant, "violations": violations, "rate": rate}
+    return {"total": total, "compliant": compliant, "violations": violations, "deletes": deletes, "rate": rate}
 
 
 def fetch_table_names(conn):
@@ -356,7 +357,7 @@ except Exception as e:
     st.error(f"Failed to load summary: {e}")
     st.stop()
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 with c1:
     metric_card("Total Processed", f"{summary['total']:,}", "neutral")
 with c2:
@@ -365,6 +366,8 @@ with c3:
     metric_card("Violations", f"{summary['violations']:,}", "red")
 with c4:
     metric_card("Violation Rate", f"{summary['rate']:.1f}%", "amber")
+with c5:
+    metric_card("Deletes", f"{summary['deletes']:,}", "neutral")
 
 # ── Charts ────────────────────────────────────────────────────────────────────
 

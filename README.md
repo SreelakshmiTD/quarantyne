@@ -164,7 +164,7 @@ Two runs, same architecture, before and after the batching fix:
 
 ## Local Development Credentials
 
-The Postgres credentials used throughout this project (`privacypulse` / `privacypulse`) are throwaway local development credentials defined in `docker-compose.yml` and hardcoded in the consumer and dashboard for convenience. They are not representative of how secrets should be handled in a real deployment.
+The Postgres credentials used throughout this project (`privacypulse` / `privacypulse`) are throwaway local development credentials defined in `docker-compose.yml` and loaded via environment variables (`.env`). They are not representative of how secrets should be handled in a real deployment.
 
 A production deployment would source credentials from environment variables or a secrets manager (e.g. AWS Secrets Manager, HashiCorp Vault), with no credentials appearing in source code or config files checked into version control.
 

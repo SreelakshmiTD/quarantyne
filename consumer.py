@@ -273,7 +273,7 @@ def run() -> None:
                 db.rollback()
                 pending_violations = 0
                 print(f"  [ERROR] Failed to process message at offset {msg.offset()}: {e}")
-                print(f"  [ERROR] Pending audit inserts rolled back. Offset NOT committed.\n")
+                print(f"  [ERROR] All pending audit inserts for this batch rolled back — offsets for earlier messages in this batch may still advance on next flush.\n")
 
     except KeyboardInterrupt:
         print("\nStopped by user.")

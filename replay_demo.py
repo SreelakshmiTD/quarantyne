@@ -32,7 +32,7 @@ load_dotenv()
 
 KAFKA_BROKER   = os.getenv("KAFKA_BROKER", "localhost:9092")
 TOPIC_PATTERN  = r"^quarantyne\.public\..+"
-GROUP_ID       = os.getenv("KAFKA_GROUP_ID", "quarantyne-replay-demo")   # fresh group → no committed offsets → starts at earliest
+GROUP_ID       = os.getenv("KAFKA_REPLAY_GROUP_ID", "quarantyne-replay-demo")   # distinct var from KAFKA_GROUP_ID — can never collide with the production consumer by construction
 IDLE_TIMEOUT_S = 5                          # exit after this many seconds with no new messages
 
 OP_LABELS = {
