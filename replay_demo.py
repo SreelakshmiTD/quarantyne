@@ -44,7 +44,7 @@ OP_LABELS = {
 
 
 def run() -> None:
-    policy_config = load_policy_config("policy.yaml")
+    policy_config = load_policy_config(os.path.join(os.path.dirname(__file__), "policy.yaml"))
     print("Policy loaded:")
     for table, cfg in policy_config.get("tables", {}).items():
         print(f"  {table}: allowed_pii_fields = {cfg.get('allowed_pii_fields', [])}")
