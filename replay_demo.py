@@ -20,8 +20,6 @@ Run:
 import json
 import os
 import time
-from datetime import datetime, timezone
-
 from confluent_kafka import Consumer, KafkaError, KafkaException
 from dotenv import load_dotenv
 
