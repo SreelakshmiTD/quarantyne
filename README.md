@@ -7,11 +7,20 @@ Quarantyne is a real-time privacy enforcement gateway that sits between a databa
 
 ## Screenshots
 
+**Processing health, violation trend, and active filters**
 ![Dashboard](screenshots/dashboard.png)
 
-![Records](screenshots/records.png)
+**PII type breakdown — ranked by violation frequency across all tables**
+![PII Breakdown](screenshots/pii-breakdown.png)
 
+**Violation detail — before/after diff, detection reasoning, newly introduced fields (PII masked for display)**
 ![Violation Detail](screenshots/violation-detail.png)
+
+**Consumer — live enforcement: clean INSERT routed to approved, UPDATE with unauthorized PII quarantined**
+![Consumer Output](screenshots/consumer-output.png)
+
+**Replay demo — historical events reprocessed through updated policy, outcome changes surfaced**
+![Replay Output](screenshots/replay-output.png)
 
 ---
 
