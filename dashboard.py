@@ -366,9 +366,8 @@ except Exception as e:
 
 with st.sidebar:
     st.markdown(
-        '<div style="font-size:1.2rem;font-weight:700;letter-spacing:-0.01em;color:#2563eb;">'
-        "Quarantyne</div>"
-        '<div style="color:#9ca3af;font-size:0.75rem;margin-top:2px;margin-bottom:1rem;">'
+        '<div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;'
+        'letter-spacing:0.1em;color:#9ca3af;margin-bottom:1rem;">'
         "Privacy Enforcement Dashboard</div>",
         unsafe_allow_html=True,
     )
