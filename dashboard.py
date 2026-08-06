@@ -468,7 +468,7 @@ with chart_r:
     if not df_pii.empty:
         chart = (
             alt.Chart(df_pii.reset_index())
-            .mark_bar(color="#f59e0b", cornerRadiusTopLeft=3, cornerRadiusTopRight=3, size=52)
+            .mark_bar(color="#f59e0b", cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
             .encode(
                 x=alt.X("field:N", sort="-y", title=None, axis=alt.Axis(labelAngle=-30)),
                 y=alt.Y("count:Q", title=None),
