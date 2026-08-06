@@ -26,9 +26,18 @@ def get_connection():
     return psycopg2.connect(**DB_CONFIG)
 
 
-def fetch_summary(conn, table_filter=None):
-    where = "WHERE table_name = %s" if table_filter else ""
-    params = [table_filter] if table_filter else []
+def fetch_summary(conn, table_filter=None, date_from=None, date_to=None):
+    conditions, params = [], []
+    if table_filter:
+        conditions.append("table_name = %s")
+        params.append(table_filter)
+    if date_from:
+        conditions.append("event_timestamp >= %s")
+        params.append(date_from)
+    if date_to:
+        conditions.append("event_timestamp < %s")
+        params.append(date_to + timedelta(days=1))
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     with conn.cursor() as cur:
         cur.execute(f"""
             SELECT
@@ -447,7 +456,7 @@ st.markdown(
 st.markdown('<div class="q-section">Processing Health</div>', unsafe_allow_html=True)
 
 try:
-    summary = fetch_summary(conn, table_filter)
+    summary = fetch_summary(conn, table_filter, filter_date_from, filter_date_to)
 except Exception as e:
     st.error(f"Failed to load summary: {e}")
     st.stop()
