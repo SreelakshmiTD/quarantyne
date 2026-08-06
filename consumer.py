@@ -69,6 +69,8 @@ def flush_batch(
 def run() -> None:
     try:
         policy_config = load_policy_config(POLICY_FILE)
+        if not isinstance(policy_config, dict) or "tables" not in policy_config:
+            raise ValueError("policy config must be a dict with a 'tables' key")
     except Exception as e:
         print(f"[FATAL] Could not load policy config from {POLICY_FILE}: {e}")
         return
@@ -118,7 +120,10 @@ def run() -> None:
             current_mtime = os.path.getmtime(POLICY_FILE)
             if current_mtime != policy_mtime:
                 try:
-                    policy_config = load_policy_config(POLICY_FILE)
+                    reloaded = load_policy_config(POLICY_FILE)
+                    if not isinstance(reloaded, dict) or "tables" not in reloaded:
+                        raise ValueError("policy config must be a dict with a 'tables' key")
+                    policy_config = reloaded
                     policy_mtime  = current_mtime
                     print(f"Policy config reloaded from {POLICY_FILE}")
                 except Exception as e:
