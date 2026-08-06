@@ -130,7 +130,7 @@ _PHONE_FIELDS = {"phone", "phone_number", "mobile", "mobile_number", "cell"}
 _UNMASKED_FIELDS = {"customer_id", "segment", "country", "id"}
 
 
-def mask_pii_value(field_name: str, value) -> str:
+def mask_pii_value(field_name: str, value) -> str | None:
     if value is None:
         return None
     s = str(value)
