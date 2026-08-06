@@ -99,7 +99,6 @@ def run() -> None:
                 envelope = json.loads(raw)
                 payload  = envelope.get("payload", envelope)
                 op       = payload.get("op")
-                before   = payload.get("before")
                 after    = payload.get("after")
                 source   = payload.get("source", {})
                 table_name = f"{source.get('schema', 'unknown')}.{source.get('table', 'unknown')}"
