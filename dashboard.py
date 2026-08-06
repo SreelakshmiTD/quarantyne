@@ -1,3 +1,4 @@
+import html
 import os
 
 import psycopg2
@@ -183,7 +184,7 @@ def field_badges(fields: list, border: str = "#dc2626", fg: str = "#dc2626", bg:
         return
     badges = " ".join(
         f'<span style="background:{bg};color:{fg};border:1px solid {border};'
-        f'padding:3px 11px;border-radius:12px;font-size:0.78rem;margin-right:4px;">{f}</span>'
+        f'padding:3px 11px;border-radius:12px;font-size:0.78rem;margin-right:4px;">{html.escape(str(f))}</span>'
         for f in fields
     )
     st.markdown(badges, unsafe_allow_html=True)
@@ -195,7 +196,7 @@ def show_violation_detail(row: dict) -> None:
     st.markdown(
         f'<p style="color:#6b7280;font-size:0.85rem;margin-top:-8px;">'
         f'ID&nbsp;{row["id"]} &nbsp;·&nbsp; {ts} &nbsp;·&nbsp;'
-        f' {row["table_name"]} &nbsp;·&nbsp; {row["operation"]}</p>',
+        f' {html.escape(row["table_name"])} &nbsp;·&nbsp; {html.escape(row["operation"])}</p>',
         unsafe_allow_html=True,
     )
 
