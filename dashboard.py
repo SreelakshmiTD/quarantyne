@@ -95,7 +95,7 @@ def fetch_violations(conn, table_filter=None, field_search=None, page=1):
 def fetch_violations_over_time(conn):
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT date_trunc('hour', event_timestamp) AS hour, COUNT(*) AS violations
+            SELECT date_trunc('day', event_timestamp) AS day, COUNT(*) AS violations
             FROM violation_audit_log
             GROUP BY 1
             ORDER BY 1
@@ -103,9 +103,9 @@ def fetch_violations_over_time(conn):
         rows = cur.fetchall()
     if not rows:
         return pd.DataFrame()
-    df = pd.DataFrame(rows, columns=["hour", "violations"])
-    df["hour"] = pd.to_datetime(df["hour"])
-    return df.set_index("hour")
+    df = pd.DataFrame(rows, columns=["day", "violations"])
+    df["day"] = pd.to_datetime(df["day"])
+    return df.set_index("day")
 
 
 def fetch_pii_breakdown(conn):
@@ -448,17 +448,17 @@ with chart_l:
     st.markdown('<div class="q-section">Violations Over Time</div>', unsafe_allow_html=True)
     if not df_time.empty:
         base = alt.Chart(df_time.reset_index()).encode(
-            x=alt.X("hour:T", title=None),
+            x=alt.X("day:T", title=None, axis=alt.Axis(format="%b %d")),
             y=alt.Y("violations:Q", title=None, scale=alt.Scale(domainMin=0)),
             tooltip=[
-                alt.Tooltip("hour:T", title="Time", format="%b %d %H:%M"),
+                alt.Tooltip("day:T", title="Date", format="%b %d"),
                 alt.Tooltip("violations:Q", title="Violations"),
             ],
         )
         chart = (
             base.mark_area(color="#ef4444", opacity=0.12)
-            + base.mark_line(color="#ef4444", strokeWidth=2)
-        ).properties(height=280).interactive()
+            + base.mark_line(color="#ef4444", strokeWidth=2, point=alt.OverlayMarkDef(color="#ef4444", size=60, filled=True))
+        ).properties(height=280)
         st.altair_chart(chart, use_container_width=True)
     else:
         st.caption("No data yet.")
@@ -477,7 +477,7 @@ with chart_r:
                     alt.Tooltip("count:Q", title="Violations"),
                 ],
             )
-            .properties(height=280)
+            .properties(height=320)
         )
         st.altair_chart(chart, use_container_width=True)
     else:
