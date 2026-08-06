@@ -23,7 +23,7 @@ import time
 from confluent_kafka import Consumer, KafkaError, KafkaException
 from dotenv import load_dotenv
 
-from detector import detect_pii_in_payload, diff_before_after
+from detector import detect_pii_in_payload
 from policy import load_policy_config, evaluate_policy
 
 load_dotenv()
@@ -114,7 +114,6 @@ def run() -> None:
                 continue
 
             pii_result    = detect_pii_in_payload(after)
-            diff_result   = diff_before_after(before, after)
             policy_result = evaluate_policy(table_name, pii_result, policy_config)
             decision      = policy_result["decision"]
 
