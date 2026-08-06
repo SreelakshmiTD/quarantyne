@@ -127,10 +127,13 @@ def run() -> None:
             # Time-based flush: runs on every poll tick, including idle (msg is None)
             if last_processed_msg is not None and msgs_since_batch > 0:
                 if time.time() - last_flush_time > 5:
-                    flush_batch(producer, db, consumer, last_processed_msg, pending_violations, label="timeout")
-                    msgs_since_batch = 0
-                    pending_violations = 0
-                    last_flush_time = time.time()
+                    try:
+                        flush_batch(producer, db, consumer, last_processed_msg, pending_violations, label="timeout")
+                        msgs_since_batch = 0
+                        pending_violations = 0
+                        last_flush_time = time.time()
+                    except Exception as e:
+                        print(f"  [ERROR] Time-based flush failed: {e} — will retry on next tick")
 
             if msg is None:
                 continue
