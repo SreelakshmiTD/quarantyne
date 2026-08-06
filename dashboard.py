@@ -499,35 +499,6 @@ if not violations:
 
 st.caption(f"Page {current_page} of {total_pages} · {total_violations:,} total violations · select a row then click View Details")
 
-pager = _paginator_items(current_page, total_pages)
-for col, item in zip(st.columns(len(pager)), pager):
-    with col:
-        if item == "←":
-            if st.button("←", disabled=current_page <= 1, use_container_width=True):
-                st.session_state["page_input"] = current_page - 1
-                st.rerun()
-        elif item == "→":
-            if st.button("→", disabled=current_page >= total_pages, use_container_width=True):
-                st.session_state["page_input"] = current_page + 1
-                st.rerun()
-        elif item is None:
-            st.markdown(
-                '<p style="text-align:center;margin-top:6px;color:#9ca3af;">…</p>',
-                unsafe_allow_html=True,
-            )
-        elif item == current_page:
-            st.markdown(
-                f'<div style="text-align:center;margin-top:4px;">'
-                f'<span style="background:#2563eb;color:#fff;border-radius:4px;'
-                f'padding:5px 10px;font-size:0.875rem;font-weight:600;">{item}</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            if st.button(str(item), use_container_width=True):
-                st.session_state["page_input"] = item
-                st.rerun()
-
 display_rows = [
     {
         "id": row["id"],
@@ -557,6 +528,38 @@ selected = st.dataframe(
 )
 
 selected_rows = selected.selection.rows if selected.selection else []
+
+# ── Paginator (below table, right-aligned) ────────────────────────────────────
+_, pager_col = st.columns([2, 3])
+with pager_col:
+    pager = _paginator_items(current_page, total_pages)
+    for col, item in zip(st.columns(len(pager)), pager):
+        with col:
+            if item == "←":
+                if st.button("←", disabled=current_page <= 1, use_container_width=True):
+                    st.session_state["page_input"] = current_page - 1
+                    st.rerun()
+            elif item == "→":
+                if st.button("→", disabled=current_page >= total_pages, use_container_width=True):
+                    st.session_state["page_input"] = current_page + 1
+                    st.rerun()
+            elif item is None:
+                st.markdown(
+                    '<p style="text-align:center;margin-top:6px;color:#9ca3af;">…</p>',
+                    unsafe_allow_html=True,
+                )
+            elif item == current_page:
+                st.markdown(
+                    f'<div style="text-align:center;margin-top:4px;">'
+                    f'<span style="background:#2563eb;color:#fff;border-radius:4px;'
+                    f'padding:5px 10px;font-size:0.875rem;font-weight:600;">{item}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                if st.button(str(item), use_container_width=True):
+                    st.session_state["page_input"] = item
+                    st.rerun()
 
 if selected_rows:
     row = violations[selected_rows[0]]
