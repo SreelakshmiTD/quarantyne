@@ -44,7 +44,7 @@ def evaluate_policy(table: str, detection_result: dict, policy_config: dict) -> 
             "unauthorized_fields": list(detected),
         }
 
-    allowed = set(policy_config["tables"][table].get("allowed_pii_fields", []))
+    allowed = set((policy_config["tables"][table] or {}).get("allowed_pii_fields", []))
     # Compare the leaf key (last dotted component) against allowed_pii_fields,
     # so "contact.email" matches an allow-list entry of "email". The full path
     # is retained in unauthorized_fields for audit precision.
