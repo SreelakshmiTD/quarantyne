@@ -365,10 +365,11 @@ except Exception as e:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("## Quarantyne")
     st.markdown(
-        '<p style="color:#9ca3af;font-size:0.78rem;margin-top:-10px;margin-bottom:1rem;">'
-        "Privacy Enforcement Dashboard</p>",
+        '<div style="font-size:1.2rem;font-weight:700;letter-spacing:-0.01em;color:#2563eb;">'
+        "Quarantyne</div>"
+        '<div style="color:#9ca3af;font-size:0.75rem;margin-top:2px;margin-bottom:1rem;">'
+        "Privacy Enforcement Dashboard</div>",
         unsafe_allow_html=True,
     )
     if st.button("Refresh", type="primary", use_container_width=True):
@@ -398,8 +399,11 @@ except Exception:
 ts_str = last_updated.strftime("%Y-%m-%d %H:%M:%S UTC") if last_updated else "—"
 
 st.markdown(
-    '<p style="font-size:1rem;font-weight:600;margin-bottom:0;">Real-Time Privacy Enforcement for CDC Streams</p>'
-    f'<p style="color:#9ca3af;font-size:0.8rem;margin-top:2px;">Last event: {ts_str}</p>',
+    '<h1 style="font-size:2.4rem;font-weight:800;letter-spacing:-0.03em;'
+    'color:#2563eb;margin:0 0 4px 0;line-height:1.1;">Quarantyne</h1>'
+    '<p style="color:#4b5563;font-size:0.95rem;font-weight:500;margin:0 0 2px 0;">'
+    "Real-Time Privacy Enforcement for CDC Streams</p>"
+    f'<p style="color:#9ca3af;font-size:0.78rem;margin:0 0 1.5rem 0;">Last event: {ts_str}</p>',
     unsafe_allow_html=True,
 )
 
