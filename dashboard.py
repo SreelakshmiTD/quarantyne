@@ -227,7 +227,14 @@ def show_violation_detail(row: dict) -> None:
             )
     with col_after:
         st.markdown("**After**")
-        st.json(mask_payload(dict(row["raw_after_payload"]), detected))
+        if row.get("raw_after_payload"):
+            st.json(mask_payload(dict(row["raw_after_payload"]), detected))
+        else:
+            st.markdown(
+                '<p style="color:#9ca3af;font-style:italic;font-size:0.9rem;">'
+                "No after state</p>",
+                unsafe_allow_html=True,
+            )
 
     st.caption(
         "PII values are masked for display. "
