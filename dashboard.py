@@ -369,7 +369,6 @@ st.markdown('<div class="q-section">Processing Health</div>', unsafe_allow_html=
 try:
     summary = fetch_summary(conn)
 except Exception as e:
-    conn.close()
     st.error(f"Failed to load summary: {e}")
     st.stop()
 
