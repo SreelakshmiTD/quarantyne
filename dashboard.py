@@ -314,6 +314,18 @@ st.markdown("""
     letter-spacing: 0.1em;
     margin-bottom: 0.75rem;
 }
+
+/* Sidebar Refresh button — blue, scoped to sidebar only */
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+    background-color: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+}
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
+    background-color: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #ffffff;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -339,7 +351,7 @@ with st.sidebar:
         "Privacy Enforcement Dashboard</p>",
         unsafe_allow_html=True,
     )
-    if st.button("Refresh", type="secondary", use_container_width=True):
+    if st.button("Refresh", type="primary", use_container_width=True):
         st.rerun()
 
     st.markdown("---")
@@ -423,7 +435,6 @@ with chart_l:
         chart = (
             base.mark_area(color="#ef4444", opacity=0.12)
             + base.mark_line(color="#ef4444", strokeWidth=2)
-            + base.mark_point(color="#ef4444", size=40, filled=True)
         ).properties(height=280).interactive()
         st.altair_chart(chart, use_container_width=True)
     else:
@@ -436,7 +447,7 @@ with chart_r:
             alt.Chart(df_pii.reset_index())
             .mark_bar(color="#f59e0b", cornerRadiusTopLeft=3, cornerRadiusTopRight=3, size=52)
             .encode(
-                x=alt.X("field:N", sort="-y", title=None, axis=alt.Axis(labelAngle=-45)),
+                x=alt.X("field:N", sort="-y", title=None, axis=alt.Axis(labelAngle=-30)),
                 y=alt.Y("count:Q", title=None),
                 tooltip=[
                     alt.Tooltip("field:N", title="Field"),
@@ -470,11 +481,17 @@ if not violations:
     st.info("No violations match the current filters.")
     st.stop()
 
-cap_col, page_col = st.columns([5, 1])
-with cap_col:
+prev_col, info_col, next_col = st.columns([1, 8, 1])
+with prev_col:
+    if st.button("←", disabled=current_page <= 1, use_container_width=True):
+        st.session_state["page_input"] = current_page - 1
+        st.rerun()
+with info_col:
     st.caption(f"Page {current_page} of {total_pages} · {total_violations:,} total violations · select a row then click View Details")
-with page_col:
-    st.number_input("Page", min_value=1, value=int(page), step=1, key="page_input", label_visibility="collapsed")
+with next_col:
+    if st.button("→", disabled=current_page >= total_pages, use_container_width=True):
+        st.session_state["page_input"] = current_page + 1
+        st.rerun()
 
 display_rows = [
     {
